@@ -3,7 +3,6 @@ const muteTimes = new Map(); // userId -> timestamp (Ende)
 const banTimes = new Map();  // userId -> timestamp (Ende)
 
 
-// ...existing code...
 // Einfacher Discord-Bot mit discord.js v14
 
 
@@ -808,4 +807,17 @@ client.on('messageDelete', async (message) => {
     );
 
   await logChannel.send({ embeds: [embed] });
+});
+
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Health check route for Render
+app.get('/', (req, res) => {
+  res.send('Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server läuft auf Port ${PORT}`);
 });
