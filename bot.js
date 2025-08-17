@@ -473,6 +473,12 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ content: 'User nicht auf diesem Server gefunden.', ephemeral: true });
       return;
     }
+    // NEU: Prüfe Rollen-Hierarchie
+    const authorMember = interaction.guild.members.cache.get(interaction.user.id);
+    if (member.roles.highest.position >= authorMember.roles.highest.position) {
+      await interaction.reply({ content: 'Du kannst diesen User nicht muten, da er eine gleich hohe oder höhere Rolle hat als du.', ephemeral: true });
+      return;
+    }
     // Zeit umrechnen
     let durationMs = null;
     let endTimestamp = null;
@@ -956,6 +962,56 @@ client.on('messageCreate', async message => {
 
     await message.reply(msg);
   }
+});
+
+// Anti-Spam Tracking
+const spamTracker = new Map(); // userId -> [timestamps]
+
+client.on('messageCreate', async message => {
+  // Anti-Spam: 10 Nachrichten in 10 Sekunden = 20 Minuten Mute
+  if (!message.author.bot && message.guild && message.content) {
+    const now = Date.now();
+    const userId = message.author.id;
+    const muteRoleId = '1402053030114754572';
+
+    // Hole bisherigen Timestamps
+    let timestamps = spamTracker.get(userId) || [];
+    // Entferne alle älter als 10 Sekunden
+    timestamps = timestamps.filter(ts => now - ts < 10000);
+    timestamps.push(now);
+    spamTracker.set(userId, timestamps);
+
+    if (timestamps.length >= 10) {
+      // Mute nur, wenn User nicht schon gemutet ist
+      const member = message.guild.members.cache.get(userId);
+      if (member && !member.roles.cache.has(muteRoleId)) {
+        try {
+          await member.roles.add(muteRoleId, 'Spam (10 Nachrichten in 10 Sekunden)');
+          const durationMs = 20 * 60 * 1000; // 20 Minuten
+          const endTimestamp = Date.now() + durationMs;
+          muteTimes.set(userId, { end: endTimestamp, reason: 'Spam', moderator: 'AutoMod' });
+
+          setTimeout(async () => {
+            try {
+              await member.roles.remove(muteRoleId, 'Mute abgelaufen');
+              muteTimes.delete(userId);
+            } catch (e) {}
+          }, durationMs);
+
+          try {
+            await member.send('Du wurdest für 20 Minuten gemutet wegen Spam (10 Nachrichten in 10 Sekunden).');
+          } catch (e) {}
+
+          // Optional: Modlog-Eintrag
+          modlog.push({ userId, type: 'mute', reason: 'Spam', time: Date.now() });
+        } catch (e) {}
+      }
+      // Tracker zurücksetzen
+      spamTracker.set(userId, []);
+    }
+  }
+
+  // ...existing code...
 });
 
 
