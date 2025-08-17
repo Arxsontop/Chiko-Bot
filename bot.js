@@ -300,6 +300,7 @@ client.on('interactionCreate', async interaction => {
       .setTimestamp();
 
     await channel.send({ content: '@everyone', embeds: [embed] });
+    await channel.send('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExamptN3N6eTBxNGR5emltcDVzZnoyYXMyNFRmdzBqc2Z4YjMyazFobiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/1kadbC47cBJIdxIJJG/giphy.gif');
   await interaction.reply({ content: 'Ankündigung wurde gesendet!', flags: 64 });
   }
 
@@ -849,10 +850,7 @@ client.on('messageCreate', async message => {
       .map(r => r.trim())
       .filter(r => r.length > 0);
 
-    if (roleNames.length === 0) {
-      await message.reply('Bitte gib mindestens einen Rollennamen an.');
-      return;
-    }
+    // ...existing code...
 
     // Hole User
     const userIdMatch = userMention.match(/^<@!?(\d+)>$/);
