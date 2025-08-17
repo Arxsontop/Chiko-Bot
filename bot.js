@@ -270,10 +270,12 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.commandName === 'ankündigung') {
-    // Rollen-Check: Nur User mit Rolle 'Airez' oder höher dürfen /ankündigung nutzen
+    // Rollen-Check: Nur User mit bestimmten Rollen dürfen /ankündigung nutzen
     const erlaubteRollen = [
-      'AIREZ_ROLE_ID', // Ersetze durch die echte Rollen-ID von 'Airez'
-      // ggf. weitere Rollen-IDs für "trüber airez" oder höhere Rollen
+      '1402042622360682587',
+      '1402042198358229062',
+      '1402042198362689577',
+      '1402042568673464360'
     ];
     if (!erlaubteRollen.some(rid => interaction.member.roles.cache.has(rid))) {
   await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', flags: 64 });
