@@ -1,7 +1,7 @@
 // Beispielhafte Speicher für Mute- und Ban-Zeiten (in Memory, für Demo)
-const muteTimes = new Map(); // userId -> timestamp (Ende)
-const banTimes = new Map();  // userId -> timestamp (Ende)
-
+// Erweitert: userId -> { end, reason, moderator }
+const muteTimes = new Map(); // userId -> { end, reason, moderator }
+const banTimes = new Map();  // userId -> { end, reason, moderator }
 
 // Einfacher Discord-Bot mit discord.js v14
 
@@ -10,7 +10,7 @@ require('dotenv').config();
 
 const { SlashCommandBuilder, REST, Routes } = require('discord.js');
 
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 
 // Erstelle neuen Client mit n tigen Intents
 const client = new Client({
@@ -26,7 +26,7 @@ client.once('ready', () => {
   console.log('Bot ist online!');
 });
 
-client.login(process.env.TOKEN); // ✅
+client.                                                                                                                                                                                                                                                       login(process.env.TOKEN); // ✅
 // Slash-Command registrieren (einmalig beim Start)
 const commands = [
   new SlashCommandBuilder()
@@ -104,25 +104,6 @@ const commands = [
         .setDescription('Der zu entmutende User')
         .setRequired(true)),
   new SlashCommandBuilder()
-    .setName('role')
-    .setDescription('Gibt einem User eine oder mehrere Rollen (oder entfernt sie)')
-    .addUserOption(option =>
-      option.setName('user')
-        .setDescription('Der User, dem Rollen gegeben/genommen werden sollen')
-        .setRequired(true))
-    .addRoleOption(option =>
-      option.setName('role1')
-        .setDescription('Rolle 1')
-        .setRequired(true))
-    .addRoleOption(option =>
-      option.setName('role2')
-        .setDescription('Rolle 2')
-        .setRequired(false))
-    .addRoleOption(option =>
-      option.setName('role3')
-        .setDescription('Rolle 3')
-        .setRequired(false)),
-  new SlashCommandBuilder()
     .setName('ankündigung')
     .setDescription('Erstellt eine Ankündigung im Ankündigungs-Channel')
     .addStringOption(option =>
@@ -133,6 +114,34 @@ const commands = [
       option.setName('text')
         .setDescription('Text der Ankündigung')
         .setRequired(true))
+  ,
+  new SlashCommandBuilder()
+    .setName('mutetime')
+    .setDescription('Zeigt Mute-Infos eines Users')
+    .addUserOption(option =>
+      option.setName('user')
+        .setDescription('Der gemutete User')
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('bantime')
+    .setDescription('Zeigt Ban-Infos eines Users')
+    .addUserOption(option =>
+      option.setName('user')
+        .setDescription('Der gebannte User')
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('modlog')
+    .setDescription('Zeigt Moderations-Historie eines Users (letztes Jahr)')
+    .addStringOption(option =>
+      option.setName('userid')
+        .setDescription('Die User-ID des Users')
+        .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Antwortet mit Pong!')
 ].map(cmd => cmd.toJSON());
 
 // Ersetze durch deine IDs!
@@ -162,17 +171,31 @@ const modlog = []; // [{ userId, type, reason, time }]
 
 // Event: Interaktion empfangen
 client.on('interactionCreate', async interaction => {
+  // Ping-Pong Command Handler
+  if (interaction.isChatInputCommand() && interaction.commandName === 'ping') {
+    await interaction.reply('Pong! 🏓');
+    return;
+  }
+
   if (interaction.commandName === 'mutetime') {
+    // Nur Rolle mit ID 1402043028012535890 darf ausführen
+    if (!interaction.member.roles.cache.has('1402043028012535890')) {
+  await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Command auszuführen.', flags: 64 });
+      return;
+    }
     const user = interaction.options.getUser('user');
-    const muteEnd = muteTimes.get(user.id);
+    const muteInfo = muteTimes.get(user.id);
     let rest = 'Nicht gemutet';
-    if (muteEnd && muteEnd > Date.now()) {
-      const ms = muteEnd - Date.now();
+    let grund = '-';
+    let moderator = '-';
+    if (muteInfo && muteInfo.end > Date.now()) {
+      const ms = muteInfo.end - Date.now();
       const min = Math.floor(ms / 60000);
       const sec = Math.floor((ms % 60000) / 1000);
       rest = `${min}m ${sec}s`;
+      grund = muteInfo.reason || '-';
+      moderator = muteInfo.moderator || '-';
     }
-    // Account-Alter berechnen
     const created = `<t:${Math.floor(user.createdTimestamp/1000)}:R>`;
     const embed = new EmbedBuilder()
       .setTitle('Mute-Status')
@@ -181,25 +204,34 @@ client.on('interactionCreate', async interaction => {
         { name: 'User', value: `${user.tag}`, inline: true },
         { name: 'ID', value: user.id, inline: true },
         { name: 'Discord seit', value: created, inline: true },
-        { name: 'Verbleibende Mute-Zeit', value: rest, inline: false }
+        { name: 'Verbleibende Mute-Zeit', value: rest, inline: false },
+        { name: 'Grund', value: grund, inline: false },
+        { name: 'Gemutet von', value: moderator, inline: false }
       )
       .setColor('#000000')
       .setTimestamp();
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+  await interaction.reply({ embeds: [embed], flags: 64 });
     return;
   }
 
   if (interaction.commandName === 'bantime') {
+    if (!interaction.member.roles.cache.has('1402043028012535890')) {
+  await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Command auszuführen.', flags: 64 });
+      return;
+    }
     const user = interaction.options.getUser('user');
-    const banEnd = banTimes.get(user.id);
+    const banInfo = banTimes.get(user.id);
     let rest = 'Nicht gebannt';
-    if (banEnd && banEnd > Date.now()) {
-      const ms = banEnd - Date.now();
+    let grund = '-';
+    let moderator = '-';
+    if (banInfo && banInfo.end > Date.now()) {
+      const ms = banInfo.end - Date.now();
       const min = Math.floor(ms / 60000);
       const sec = Math.floor((ms % 60000) / 1000);
       rest = `${min}m ${sec}s`;
+      grund = banInfo.reason || '-';
+      moderator = banInfo.moderator || '-';
     }
-    // Account-Alter berechnen
     const created = `<t:${Math.floor(user.createdTimestamp/1000)}:R>`;
     const embed = new EmbedBuilder()
       .setTitle('Ban-Status')
@@ -208,11 +240,13 @@ client.on('interactionCreate', async interaction => {
         { name: 'User', value: `${user.tag}`, inline: true },
         { name: 'ID', value: user.id, inline: true },
         { name: 'Discord seit', value: created, inline: true },
-        { name: 'Verbleibende Ban-Zeit', value: rest, inline: false }
+        { name: 'Verbleibende Ban-Zeit', value: rest, inline: false },
+        { name: 'Grund', value: grund, inline: false },
+        { name: 'Gebannt von', value: moderator, inline: false }
       )
       .setColor('#000000')
       .setTimestamp();
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+  await interaction.reply({ embeds: [embed], flags: 64 });
     return;
   }
   if (!interaction.isChatInputCommand()) return;
@@ -220,7 +254,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.commandName === 'dm') {
     // Nur Mitglieder mit Rolle 1403716772770742284 dürfen /dm ausführen
     if (!interaction.member.roles.cache.has('1403716772770742284')) {
-      await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', ephemeral: true });
+  await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', flags: 64 });
       return;
     }
     const userId = interaction.options.getString('userid');
@@ -229,9 +263,9 @@ client.on('interactionCreate', async interaction => {
       // User kann auch außerhalb des Servers sein
       const user = await client.users.fetch(userId, { force: true });
       await user.send(text);
-      await interaction.reply({ content: `Nachricht an <@${userId}> gesendet!`, ephemeral: true });
+  await interaction.reply({ content: `Nachricht an <@${userId}> gesendet!`, flags: 64 });
     } catch (err) {
-      await interaction.reply({ content: 'Konnte die Nachricht nicht senden. Prüfe die User-ID!', ephemeral: true });
+  await interaction.reply({ content: 'Konnte die Nachricht nicht senden. Prüfe die User-ID!', flags: 64 });
     }
   }
 
@@ -242,7 +276,7 @@ client.on('interactionCreate', async interaction => {
       // ggf. weitere Rollen-IDs für "trüber airez" oder höhere Rollen
     ];
     if (!erlaubteRollen.some(rid => interaction.member.roles.cache.has(rid))) {
-      await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', ephemeral: true });
+  await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', flags: 64 });
       return;
     }
     const titel = interaction.options.getString('titel');
@@ -252,7 +286,7 @@ client.on('interactionCreate', async interaction => {
     const channel = await client.channels.fetch(channelId);
 
     if (!channel) {
-      await interaction.reply({ content: 'Ankündigungs-Channel nicht gefunden!', ephemeral: true });
+  await interaction.reply({ content: 'Ankündigungs-Channel nicht gefunden!', flags: 64 });
       return;
     }
 
@@ -264,13 +298,14 @@ client.on('interactionCreate', async interaction => {
       .setTimestamp();
 
     await channel.send({ content: '@everyone', embeds: [embed] });
-    await interaction.reply({ content: 'Ankündigung wurde gesendet!', ephemeral: true });
+  await interaction.reply({ content: 'Ankündigung wurde gesendet!', flags: 64 });
   }
 
   if (interaction.commandName === 'kick') {
-    // Nur Mitglieder mit Rolle 1402042622360682587, 1402042198362689577 oder 1402042568673464360 dürfen kicken
+    // Nur Mitglieder mit Rolle 1402042622360682587, 1402042198358229062, 1402042198362689577 oder 1402042568673464360 dürfen kicken
     if (
       !interaction.member.roles.cache.has('1402042622360682587') &&
+      !interaction.member.roles.cache.has('1402042198358229062') &&
       !interaction.member.roles.cache.has('1402042198362689577') &&
       !interaction.member.roles.cache.has('1402042568673464360')
     ) {
@@ -301,9 +336,10 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (interaction.commandName === 'ban') {
-    // Nur Mitglieder mit Rolle 1402042622360682587 oder 1402042198362689577 dürfen bannen
+    // Nur Mitglieder mit Rolle 1402042622360682587, 1402042198358229062 oder 1402042198362689577 dürfen bannen
     if (
       !interaction.member.roles.cache.has('1402042622360682587') &&
+      !interaction.member.roles.cache.has('1402042198358229062') &&
       !interaction.member.roles.cache.has('1402042198362689577')
     ) {
       await interaction.reply({ content: 'Du hast keine Berechtigung, User zu bannen!', ephemeral: true });
@@ -318,14 +354,19 @@ client.on('interactionCreate', async interaction => {
       return;
     }
     let durationMs = null;
+    let endTimestamp = null;
     if (time === 'permanent') {
       durationMs = null;
+      endTimestamp = null;
     } else if (time.endsWith('s')) {
       durationMs = parseInt(time) * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else if (time.endsWith('m')) {
       durationMs = parseInt(time) * 60 * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else if (time.endsWith('d')) {
       durationMs = parseInt(time) * 24 * 60 * 60 * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else {
       await interaction.reply({ content: 'Ungültiges Zeitformat! Nutze z.B. 10S, 5M, 2D oder permanent.', ephemeral: true });
       return;
@@ -339,11 +380,14 @@ client.on('interactionCreate', async interaction => {
       await member.ban({ reason });
       // Add to modlog
       modlog.push({ userId: user.id, type: 'ban', reason, time: Date.now() });
+      // Speichere Ban-Info
+      banTimes.set(user.id, { end: endTimestamp, reason, moderator: interaction.user.tag });
       await interaction.reply({ content: `User ${user.tag} wurde gebannt. Grund: ${reason} Dauer: ${time}`, ephemeral: true });
       if (durationMs) {
         setTimeout(async () => {
           try {
             await interaction.guild.members.unban(user.id, 'Ban abgelaufen');
+            banTimes.delete(user.id);
           } catch (e) {
             // User war evtl. schon entbannt
           }
@@ -431,14 +475,19 @@ client.on('interactionCreate', async interaction => {
     }
     // Zeit umrechnen
     let durationMs = null;
+    let endTimestamp = null;
     if (time.endsWith('s')) {
       durationMs = parseInt(time) * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else if (time.endsWith('m')) {
       durationMs = parseInt(time) * 60 * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else if (time.endsWith('h')) {
       durationMs = parseInt(time) * 60 * 60 * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else if (time.endsWith('d')) {
       durationMs = parseInt(time) * 24 * 60 * 60 * 1000;
+      endTimestamp = Date.now() + durationMs;
     } else {
       await interaction.reply({ content: 'Ungültiges Zeitformat! Nutze z.B. 10s, 5m, 2h, 1d.', ephemeral: true });
       return;
@@ -449,6 +498,8 @@ client.on('interactionCreate', async interaction => {
       await member.roles.add(muteRoleId, reason);
       // Add to modlog
       modlog.push({ userId: user.id, type: 'mute', reason, time: Date.now() });
+      // Speichere Mute-Info
+      muteTimes.set(user.id, { end: endTimestamp, reason, moderator: interaction.user.tag });
       await interaction.reply({ content: `User ${user.tag} wurde für ${time} gemutet. Grund: ${reason}`, ephemeral: true });
       // DM an User
       try {
@@ -458,6 +509,7 @@ client.on('interactionCreate', async interaction => {
       setTimeout(async () => {
         try {
           await member.roles.remove(muteRoleId, 'Mute abgelaufen');
+          muteTimes.delete(user.id);
         } catch (e) {}
       }, durationMs);
     } catch (err) {
@@ -491,61 +543,8 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (interaction.commandName === 'role') {
-    const targetUser = interaction.options.getUser('user');
-    const member = interaction.guild.members.cache.get(targetUser.id);
-    if (!member) {
-      await interaction.reply({ content: 'User nicht auf diesem Server gefunden.', ephemeral: true });
-      return;
-    }
 
-    // Berechtigungsprüfung
-    const requiredRoleId = '1402043459539570810';
-    const authorMember = interaction.guild.members.cache.get(interaction.user.id);
-    const requiredRole = interaction.guild.roles.cache.get(requiredRoleId);
-
-    // Prüfe, ob der User die Rolle hat oder eine höhere Rolle besitzt
-    const hasRequiredRole = authorMember.roles.cache.has(requiredRoleId);
-    const isHigher = authorMember.roles.highest.position > (requiredRole ? requiredRole.position : 0);
-
-    if (!hasRequiredRole && !isHigher) {
-      await interaction.reply({ content: 'Du hast keine Berechtigung, diesen Befehl zu benutzen!', ephemeral: true });
-      return;
-    }
-
-    // Rollen auslesen
-    const roles = [];
-    for (let i = 1; i <= 3; i++) {
-      const role = interaction.options.getRole(`role${i}`);
-      if (role) roles.push(role);
-    }
-
-    if (roles.length === 0) {
-      await interaction.reply({ content: 'Bitte gib mindestens eine Rolle an.', ephemeral: true });
-      return;
-    }
-
-    let added = [];
-    let removed = [];
-    for (const role of roles) {
-      if (member.roles.cache.has(role.id)) {
-        await member.roles.remove(role, `Entfernt durch ${interaction.user.tag} via /role`);
-        removed.push(role.name);
-      } else {
-        await member.roles.add(role, `Hinzugefügt durch ${interaction.user.tag} via /role`);
-        added.push(role.name);
-      }
-    }
-
-    let msg = '';
-    if (added.length) msg += `Hinzugefügt: ${added.join(', ')}\n`;
-    if (removed.length) msg += `Entfernt: ${removed.join(', ')}\n`;
-    if (!msg) msg = 'Keine gültigen Rollen gefunden oder geändert.';
-
-    await interaction.reply({ content: msg, ephemeral: true });
-  }
-
-  // Handler for /member command
+  // Handler für /member command
   if (interaction.commandName === 'member') {
     const user = interaction.options.getUser('user');
     const member = interaction.guild.members.cache.get(user.id);
@@ -621,171 +620,11 @@ client.on('guildMemberAdd', async member => {
   }
 });
 
-// Speicher für Join-to-Create-Konfiguration und Voice-Owner
-const joinToCreateConfig = {}; // { guildId: { channelId, categoryId } }
-const voiceOwners = {}; // { channelId: ownerId }
-const voiceBans = {}; // { channelId: Set<userId> }
-
 // Setup-Befehl per Chatnachricht
-client.on('messageCreate', async message => {
-  if (message.author.bot) return;
-
-  // Setup starten
-  if (message.content === '!join-to-create setup') {
-    await message.reply('Bitte gib die ID des Voice-Channels an, der als Join-to-Create dienen soll:');
-    const filter = m => m.author.id === message.author.id;
-    try {
-      const collected1 = await message.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] });
-      const voiceChannelId = collected1.first().content;
-      const voiceChannel = message.guild.channels.cache.get(voiceChannelId);
-      if (!voiceChannel || voiceChannel.type !== 2) {
-        await message.reply('Ungültige Voice-Channel-ID.');
-        return;
-      }
-      await message.reply('Bitte gib die ID der Kategorie an, in der neue Voice-Channels erstellt werden sollen:');
-      const collected2 = await message.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] });
-      const categoryId = collected2.first().content;
-      const category = message.guild.channels.cache.get(categoryId);
-      if (!category || category.type !== 4) {
-        await message.reply('Ungültige Kategorie-ID.');
-        return;
-      }
-      joinToCreateConfig[message.guild.id] = { channelId: voiceChannelId, categoryId };
-      await message.reply('Join-to-Create wurde eingerichtet!');
-    } catch (e) {
-      await message.reply('Zeit abgelaufen oder Fehler bei der Einrichtung.');
-    }
-  }
-
-  // Voice Owner Befehle
-  if (message.content.startsWith('!voice-')) {
-    // Channel finden, in dem der User gerade ist
-    const member = message.guild.members.cache.get(message.author.id);
-    const voiceChannel = member.voice.channel;
-    if (!voiceChannel || !voiceOwners[voiceChannel.id]) return;
-    if (voiceOwners[voiceChannel.id] !== message.author.id) {
-      await message.reply('Nur der Owner dieses Voice-Channels kann diese Befehle nutzen.');
-      return;
-    }
-
-    // !voice-ban @user
-    if (message.content.startsWith('!voice-ban')) {
-      const user = message.mentions.users.first();
-      if (!user) return message.reply('Bitte erwähne einen User.');
-      if (!voiceBans[voiceChannel.id]) voiceBans[voiceChannel.id] = new Set();
-      voiceBans[voiceChannel.id].add(user.id);
-      // Kicke den User, falls er im Channel ist
-      const memberToKick = message.guild.members.cache.get(user.id);
-      if (memberToKick && memberToKick.voice.channelId === voiceChannel.id) {
-        await memberToKick.voice.disconnect();
-      }
-      await message.reply(`${user.tag} wurde aus dem Voice gebannt.`);
-    }
-
-    // !voice-kick @user
-    if (message.content.startsWith('!voice-kick')) {
-      const user = message.mentions.users.first();
-      if (!user) return message.reply('Bitte erwähne einen User.');
-      const memberToKick = message.guild.members.cache.get(user.id);
-      if (memberToKick && memberToKick.voice.channelId === voiceChannel.id) {
-        await memberToKick.voice.disconnect();
-        await message.reply(`${user.tag} wurde aus dem Voice gekickt.`);
-      } else {
-        await message.reply('User ist nicht im Channel.');
-      }
-    }
-
-    // !voice-transfer @user
-    if (message.content.startsWith('!voice-transfer')) {
-      const user = message.mentions.users.first();
-      if (!user) return message.reply('Bitte erwähne einen User.');
-      if (!voiceChannel.members.has(user.id)) return message.reply('User ist nicht im Channel.');
-      voiceOwners[voiceChannel.id] = user.id;
-      await message.reply(`${user.tag} ist jetzt der Owner dieses Voice-Channels.`);
-    }
-
-    // !voice-unban @user
-    if (message.content.startsWith('!voice-unban')) {
-      const user = message.mentions.users.first();
-      if (!user) return message.reply('Bitte erwähne einen User.');
-      if (voiceBans[voiceChannel.id]) voiceBans[voiceChannel.id].delete(user.id);
-      await message.reply(`${user.tag} wurde entbannt.`);
-    }
-
-    // !voice-limit ANZAHL
-    if (message.content.startsWith('!voice-limit')) {
-      const args = message.content.split(' ');
-      const limit = parseInt(args[1]);
-      if (isNaN(limit) || limit < 0 || limit > 99) return message.reply('Bitte gib eine gültige Zahl (0-99) an.');
-      await voiceChannel.setUserLimit(limit);
-      await message.reply(`User-Limit auf ${limit} gesetzt.`);
-    }
-
-    // !voice-rename NEUER_NAME
-    if (message.content.startsWith('!voice-rename')) {
-      const args = message.content.split(' ');
-      const newName = args.slice(1).join(' ').trim();
-      if (!newName) return message.reply('Bitte gib einen neuen Namen an.');
-      if (newName.length > 100) return message.reply('Der Name darf maximal 100 Zeichen lang sein.');
-      try {
-        await voiceChannel.setName(newName);
-        await message.reply(`Channel-Name wurde zu "${newName}" geändert.`);
-      } catch (e) {
-        await message.reply('Fehler beim Umbenennen des Channels.');
-      }
-    }
-  }
-});
+// ...existing code...
 
 // Voice-Channel-Join-Event
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  // User joint einem Channel
-  const config = joinToCreateConfig[newState.guild.id];
-  if (!config) return;
-  if (newState.channelId === config.channelId) {
-    // Prüfe Ban
-    if (voiceBans[config.channelId] && voiceBans[config.channelId].has(newState.id)) {
-      setTimeout(() => newState.disconnect(), 500);
-      return;
-    }
-    // Erstelle neuen Channel
-    const newChannel = await newState.guild.channels.create({
-      name: `${newState.member.displayName}'s Raum`,
-      type: 2,
-      parent: config.categoryId,
-      permissionOverwrites: [
-        {
-          id: newState.id,
-          allow: ['ManageChannels', 'MuteMembers', 'MoveMembers', 'DeafenMembers'],
-        }
-      ]
-    });
-    // Owner merken
-    voiceOwners[newChannel.id] = newState.id;
-    // User verschieben
-    await newState.setChannel(newChannel);
-    // Channel löschen, wenn leer
-    const interval = setInterval(async () => {
-      const ch = newState.guild.channels.cache.get(newChannel.id);
-      if (!ch || ch.members.size === 0) {
-        clearInterval(interval);
-        voiceOwners[newChannel.id] = undefined;
-        voiceBans[newChannel.id] = undefined;
-        await ch.delete().catch(() => {});
-      }
-    }, 10000);
-  }
-
-  // Ban-Check für bestehende Channels
-
-  if (
-    newState.channelId &&
-    voiceBans[newState.channelId] &&
-    voiceBans[newState.channelId].has(newState.id)
-  ) {
-    // setTimeout(() => newState.disconnect(), 500); // Entfernt, da newState hier nicht definiert ist
-  }
-});
+// ...existing code...
 
 // Melde dich mit deinem Bot-Token an
 client.login(token);
@@ -821,3 +660,304 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server läuft auf Port ${PORT}`);
 });
+
+// Ticket-Setup per Chatnachricht
+client.on('messageCreate', async message => {
+  if (
+    message.content === '!ticket-setup' &&
+    message.member &&
+    message.member.permissions.has('Administrator')
+  ) {
+    const ticketButton = new ButtonBuilder()
+      .setCustomId('ticket_open')
+      .setLabel('Öffnen')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🎫');
+
+    const row = new ActionRowBuilder().addComponents(ticketButton);
+
+    const embed = new EmbedBuilder()
+      .setTitle('Ticket öffnen')
+      .setDescription('Klicke auf **Öffnen**, um ein Support-Ticket zu erstellen.')
+      .setColor('#000000');
+
+    const channel = await client.channels.fetch('1403726260848296088');
+    if (channel && channel.isTextBased()) {
+      await channel.send({ embeds: [embed], components: [row] });
+      await message.reply({ content: 'Ticket-Panel wurde erstellt!', ephemeral: true });
+    } else {
+      await message.reply({ content: 'Ticket-Channel nicht gefunden!', ephemeral: true });
+    }
+  }
+});
+
+// Ticket-Button-Handler
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === 'ticket_open') {
+    // Prüfe, ob schon ein Ticket für diesen User existiert
+    const existingTicket = interaction.guild.channels.cache.find(
+      ch =>
+        ch.type === ChannelType.GuildText &&
+        ch.name.startsWith(`ticket-${interaction.user.username}-`)
+    );
+    if (existingTicket) {
+      await interaction.reply({ content: `Du hast bereits ein offenes Ticket: ${existingTicket}`, ephemeral: true });
+      return;
+    }
+
+    // Erstelle das erste Ticket für den User
+    const ticketChannelName = `ticket-${interaction.user.username}-1`;
+
+    const ticketChannel = await interaction.guild.channels.create({
+      name: ticketChannelName,
+      type: ChannelType.GuildText,
+      // parent: 'DEINE_KATEGORIE_ID',
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: ['ViewChannel'],
+        },
+        {
+          id: interaction.user.id,
+          allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+        },
+        {
+          id: '1402043028012535890',
+          allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+        }
+      ],
+    });
+
+    // Schließen-Button
+    const closeButton = new ButtonBuilder()
+      .setCustomId('ticket_close')
+      .setLabel('Schließen')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🔒');
+    const closeRow = new ActionRowBuilder().addComponents(closeButton);
+
+    await ticketChannel.send({
+      content: `<@${interaction.user.id}> Willkommen im Ticket! Ein Supporter wird sich bald melden.`,
+      components: [closeRow]
+    });
+
+    await interaction.reply({ content: `Dein Ticket wurde erstellt: ${ticketChannel}`, ephemeral: true });
+    return;
+  }
+
+  if (interaction.customId === 'ticket_close') {
+    // Nur Ticket-Ersteller oder Supporter dürfen schließen
+    const channel = interaction.channel;
+    const member = interaction.guild.members.cache.get(interaction.user.id);
+    const isSupporter = member.roles.cache.has('1402043028012535890');
+    // Erlaube Schließen, wenn Channelname mit ticket-username beginnt
+    const isTicketOwner = channel.name.startsWith(`ticket-${interaction.user.username}`);
+    if (!isSupporter && !isTicketOwner) {
+      await interaction.reply({ content: 'Nur der Ticket-Ersteller oder Supporter dürfen das Ticket schließen.', ephemeral: true });
+      return;
+    }
+    await interaction.reply({ content: 'Ticket wird geschlossen...', ephemeral: true });
+    setTimeout(() => {
+      channel.delete('Ticket geschlossen');
+    }, 2000);
+    return;
+  }
+});
+
+// Einladungserkennung & Auto-Mute bei Server-Werbung
+client.on('messageCreate', async message => {
+  if (
+    message.author.bot ||
+    !message.guild ||
+    !message.content
+  ) return;
+
+  // Ping-Pong mit !Ping
+  if (message.content.toLowerCase() === '!ping') {
+    await message.reply('Pong! 🏓');
+    return;
+  }
+
+  // Discord Invite Link erkennen (discord.gg/xyz, discord.com/invite/xyz, etc.)
+  const inviteRegex = /(discord\.gg\/|discord\.com\/invite\/|discordapp\.com\/invite\/)[\w-]+/i;
+  if (inviteRegex.test(message.content)) {
+    try {
+      await message.delete();
+    } catch (e) {}
+
+    // 1 Monat Mute (30 Tage)
+    const muteRoleId = '1402053030114754572';
+    const member = message.guild.members.cache.get(message.author.id);
+    if (member && !member.roles.cache.has(muteRoleId)) {
+      try {
+        await member.roles.add(muteRoleId, 'Server Werbung');
+        // Mute-Info speichern
+        const durationMs = 30 * 24 * 60 * 60 * 1000; // 30 Tage
+        const endTimestamp = Date.now() + durationMs;
+        muteTimes.set(member.id, { end: endTimestamp, reason: 'Server Werbung', moderator: 'AutoMod' });
+
+        // Timer zum Entmuten
+        setTimeout(async () => {
+          try {
+            await member.roles.remove(muteRoleId, 'Mute abgelaufen');
+            muteTimes.delete(member.id);
+          } catch (e) {}
+        }, durationMs);
+
+        // DM an User
+        try {
+          await member.send('Du wurdest für 1 Monat gemutet wegen Server Werbung (Einladungslink).');
+        } catch (e) {}
+      } catch (e) {}
+    }
+  }
+});
+
+// Entferne den SlashCommandBuilder für 'role'
+
+// Handler für !role als Chatnachricht
+client.on('messageCreate', async message => {
+  if (
+    message.content.startsWith('!role') &&
+    !message.author.bot &&
+    message.guild
+  ) {
+    // Neue Syntax: !role @user rollenname [+ rollenname ...]
+    // Beispiel: !role @Max Moderator + Supporter + VIP
+    const args = message.content.split(' ').slice(1);
+    if (args.length < 2) {
+      await message.reply('Syntax: !role @user rollenname [+ rollenname ...]');
+      return;
+    }
+    const userMention = args[0];
+    // Restliche Argumente zu einem String zusammenfügen und nach + splitten
+    const roleNames = message.content
+      .split(' ')
+      .slice(2)
+      .join(' ')
+      .split('+')
+      .map(r => r.trim())
+      .filter(r => r.length > 0);
+
+    if (roleNames.length === 0) {
+      await message.reply('Bitte gib mindestens einen Rollennamen an.');
+      return;
+    }
+
+    // Hole User
+    const userIdMatch = userMention.match(/^<@!?(\d+)>$/);
+    if (!userIdMatch) {
+      await message.reply('Bitte gib einen gültigen User an (z.B. @user).');
+      return;
+    }
+    const userId = userIdMatch[1];
+    const member = message.guild.members.cache.get(userId);
+    if (!member) {
+      await message.reply('User nicht auf diesem Server gefunden.');
+      return;
+    }
+
+    // Hole Rollen anhand des Namens
+    const roles = [];
+    for (const name of roleNames) {
+      const role = message.guild.roles.cache.find(r => r.name.toLowerCase() === name.toLowerCase());
+      if (role) roles.push(role);
+    }
+    if (roles.length === 0) {
+      await message.reply('Bitte gib mindestens eine gültige Rolle an.');
+      return;
+    }
+
+    // Berechtigte Rollen-IDs
+    let allowedRoleIds = [
+      '1402042622360682587',
+      '1402042198358229062',
+      '1402042198362689577',
+      '1402042568673464360'
+    ];
+    const authorMember = message.guild.members.cache.get(message.author.id);
+
+    // Entferne Admin-Rolle explizit aus den erlaubten Rollen
+    allowedRoleIds = allowedRoleIds.filter(id => id !== '1402043459539570810');
+
+    // Finde alle erlaubten Rollen, die der User hat
+    const authorAllowedRoles = authorMember.roles.cache.filter(r => allowedRoleIds.includes(r.id));
+    if (!authorAllowedRoles.size) {
+      await message.reply('Du hast keine Berechtigung, diesen Befehl zu benutzen!');
+      return;
+    }
+    // Bestimme die höchste erlaubte Rolle des Users
+    const authorHighestAllowed = authorAllowedRoles.reduce((highest, role) => {
+      return (!highest || role.position > highest.position) ? role : highest;
+    }, null);
+
+    // Zusätzliche Prüfung: Keine Rolle mit gleicher/höherer Position als eigene höchste Rolle
+    const forbiddenRole = roles.find(role => role.position >= authorMember.roles.highest.position);
+    if (forbiddenRole) {
+      await message.reply(`Du darfst die Rolle "${forbiddenRole.name}" nicht vergeben oder entfernen, da sie gleich oder höher als deine höchste Rolle ist.`);
+      return;
+    }
+
+    // IDs der verbotenen Rollen für 1402043459539570810
+    const forbiddenForAdmin = [
+      '1402042198358229062',
+      '1402042622360682587',
+      '1402042198362689577',
+      '1402042568673464360',
+      '1402043402907811971',
+      '1402043028012535890'
+    ];
+
+    // Zusätzliche Absicherung: Rolle 1402043459539570810 darf sich selbst oder anderen NIE die verbotenen Rollen geben/entfernen
+    if (authorHighestAllowed.id === '1402043459539570810') {
+      const forbiddenRole = roles.find(role => forbiddenForAdmin.includes(role.id));
+      if (forbiddenRole) {
+        await message.reply(`Du darfst die Rolle "${forbiddenRole.name}" weder dir selbst noch anderen geben oder entfernen.`);
+        return;
+      }
+    }
+
+    // User darf nur Rollen vergeben/entfernen, die UNTER seiner höchsten erlaubten Rolle liegen
+    // Zusätzliche Absicherung: Rolle 1402043459539570810 darf niemals Rollen mit gleicher oder höherer Position vergeben/entfernen
+    let notAllowed = roles.find(role => role.position >= authorHighestAllowed.position);
+    // Admin darf sich selbst keine höhere oder gleich hohe Rolle geben
+    if (!notAllowed && authorHighestAllowed.id === '1402043459539570810') {
+      if (member.id === authorMember.id) {
+        notAllowed = roles.find(role => role.position >= authorHighestAllowed.position);
+        if (notAllowed) {
+          await message.reply(`Du darfst dir selbst die Rolle "${notAllowed.name}" nicht geben oder entfernen, da sie gleich oder höher als deine höchste Berechtigungsrolle ist.`);
+          return;
+        }
+      }
+    }
+    if (notAllowed) {
+      await message.reply(`Du darfst die Rolle "${notAllowed.name}" nicht vergeben oder entfernen, da sie gleich oder höher als deine höchste Berechtigungsrolle ist.`);
+      return;
+    }
+
+    let added = [];
+    let removed = [];
+    for (const role of roles) {
+      if (member.roles.cache.has(role.id)) {
+        await member.roles.remove(role, `Entfernt durch ${message.author.tag} via !role`);
+        removed.push(role.name);
+      } else {
+        await member.roles.add(role, `Hinzugefügt durch ${message.author.tag} via !role`);
+        added.push(role.name);
+      }
+    }
+
+    let msg = '';
+    if (added.length) msg += `Hinzugefügt: ${added.join(', ')}\n`;
+    if (removed.length) msg += `Entfernt: ${removed.join(', ')}\n`;
+    if (!msg) msg = 'Keine gültigen Rollen gefunden oder geändert.';
+
+    await message.reply(msg);
+  }
+});
+
+
+
+
