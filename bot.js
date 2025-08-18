@@ -588,14 +588,18 @@ client.on('interactionCreate', async interaction => {
 
 // Event: Wenn ein neues Mitglied dem Server beitritt, Rolle vergeben + Join-Log als Embed
 client.on('guildMemberAdd', async member => {
-  // Rolle zuweisen wie bisher
+  // Versuche, die Rolle immer zu vergeben
+  const roleId = '1402042099330715668';
   try {
-    const role = member.guild.roles.cache.get('1402042099330715668');
+    const role = member.guild.roles.cache.get(roleId);
     if (role) {
       await member.roles.add(role);
+      console.log(`Rolle ${role.name} (${roleId}) wurde an ${member.user.tag} vergeben.`);
+    } else {
+      console.log(`Rolle mit ID ${roleId} nicht gefunden!`);
     }
   } catch (err) {
-    console.error('Fehler beim Zuweisen der Rolle:', err);
+    console.error(`Fehler beim Zuweisen der Rolle ${roleId} an ${member.user.tag}:`, err);
   }
 
   // Join-Log Embed
@@ -850,8 +854,6 @@ client.on('messageCreate', async message => {
       .map(r => r.trim())
       .filter(r => r.length > 0);
 
-    // ...existing code...
-
     // Hole User
     const userIdMatch = userMention.match(/^<@!?(\d+)>$/);
     if (!userIdMatch) {
@@ -1011,7 +1013,56 @@ client.on('messageCreate', async message => {
     }
   }
 
-  // ...existing code...
+  // !modlog @user Handler
+  if (
+    message.content.startsWith('!modlog') &&
+    !message.author.bot &&
+    message.guild
+  ) {
+    const args = message.content.split(' ').slice(1);
+    if (args.length < 1) {
+      await message.reply('Syntax: !modlog @user');
+      return;
+    }
+    const userMention = args[0];
+    const userIdMatch = userMention.match(/^<@!?(\d+)>$/);
+    if (!userIdMatch) {
+      await message.reply('Bitte gib einen gültigen User an (z.B. @user).');
+      return;
+    }
+    const userId = userIdMatch[1];
+    // Hole User-Objekt
+    let user;
+    try {
+      user = await client.users.fetch(userId);
+    } catch (e) {
+      await message.reply('User nicht gefunden.');
+      return;
+    }
+    // Filtere Modlog-Einträge des letzten Jahres
+    const since = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const actions = modlog
+      .filter(log => log.userId === userId && log.time >= since)
+      .map(log =>
+        `**${log.type.toUpperCase()}**\nGrund: ${log.reason}\nVon: ${log.moderator || '-'}\nZeit: <t:${Math.floor(log.time / 1000)}:R>`
+      )
+      .join('\n\n') || 'Keine Aktionen im letzten Jahr.';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Modlog für ${user.tag}`)
+      .setColor('#000000')
+      .setThumbnail(user.displayAvatarURL())
+      .addFields(
+        { name: 'User', value: user.tag, inline: true },
+        { name: 'ID', value: user.id, inline: true },
+        { name: 'Discord seit', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+        { name: 'Mod-Aktionen (letztes Jahr)', value: actions, inline: false }
+      )
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
 });
 
 
