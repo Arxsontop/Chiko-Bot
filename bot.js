@@ -590,17 +590,7 @@ client.on('interactionCreate', async interaction => {
 client.on('guildMemberAdd', async member => {
   // Versuche, die Rolle immer zu vergeben
   const roleId = '1402042099330715668';
-  try {
-    const role = member.guild.roles.cache.get(roleId);
-    if (role) {
-      await member.roles.add(role);
-      console.log(`Rolle ${role.name} (${roleId}) wurde an ${member.user.tag} vergeben.`);
-    } else {
-      console.log(`Rolle mit ID ${roleId} nicht gefunden!`);
-    }
-  } catch (err) {
-    console.error(`Fehler beim Zuweisen der Rolle ${roleId} an ${member.user.tag}:`, err);
-  }
+  // ...automatische Rollenzuweisung entfernt...
 
   // Join-Log Embed
   try {
