@@ -590,7 +590,11 @@ client.on('interactionCreate', async interaction => {
 client.on('guildMemberAdd', async member => {
   // Versuche, die Rolle immer zu vergeben
   const roleId = '1402042099330715668';
-  // ...automatische Rollenzuweisung entfernt...
+  try {
+    if (!member.roles.cache.has(roleId)) {
+      await member.roles.add(roleId, 'Auto-Rolle beim Join');
+    }
+  } catch (e) {}
 
   // Join-Log Embed
   try {
@@ -620,6 +624,16 @@ client.on('guildMemberAdd', async member => {
     await logChannel.send({ embeds: [embed] });
   } catch (err) {
     console.error('Fehler beim Senden des Join-Logs:', err);
+  }
+});
+
+// Stelle sicher, dass alle Mitglieder die Rolle besitzen (bei jeder Rollenänderung)
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  const roleId = '1402042099330715668';
+  if (!newMember.roles.cache.has(roleId)) {
+    try {
+      await newMember.roles.add(roleId, 'Auto-Rolle Sicherstellung');
+    } catch (e) {}
   }
 });
 
