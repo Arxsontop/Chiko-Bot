@@ -628,42 +628,84 @@ client.on('guildMemberAdd', async member => {
 
 // Voice-Channel-Join-Event
 // Join to Create Voice-Channel System
-const JOIN_TO_CREATE_ID = '1403810620914143334'; // Ersetze mit deiner Channel-ID
-const CATEGORY_ID = '1402040728095424592'; // Optional: Kategorie für die neuen Channels
+// Voice-Channel-Kommandos
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+  const args = message.content.trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  // Prüfe, ob User den Join-to-Create Channel betritt
-  if (newState.channelId === JOIN_TO_CREATE_ID && oldState.channelId !== JOIN_TO_CREATE_ID) {
-    const guild = newState.guild;
-    const member = newState.member;
-    // Erstelle neuen Channel
-    const channelName = `🔊 ${member.user.username}`;
-    const newChannel = await guild.channels.create({
-      name: channelName,
-      type: 2, // Voice
-      parent: CATEGORY_ID || undefined,
-      permissionOverwrites: [
-        {
-          id: member.id,
-          allow: ['Connect', 'ManageChannels', 'MuteMembers', 'DeafenMembers'],
-        },
-        {
-          id: guild.roles.everyone.id,
-          allow: ['Connect'],
-        },
-      ],
-    });
-    // Verschiebe User in neuen Channel
-    await member.voice.setChannel(newChannel);
+  // Hilfsfunktion: User aus Mention holen
+  function getUserFromMention(mention) {
+    if (!mention) return null;
+    const matches = mention.match(/^<@!?([0-9]+)>$/);
+    if (!matches) return null;
+    return message.guild.members.cache.get(matches[1]);
   }
-  // Lösche leere temporäre Channels
-  if (
-    oldState.channel &&
-    oldState.channel.name.startsWith('🔊') &&
-    oldState.channel.members.size === 0 &&
-    oldState.channel.id !== JOIN_TO_CREATE_ID
-  ) {
-    await oldState.channel.delete().catch(() => {});
+
+  // !voice-ban @user
+  if (cmd === '!voice-ban') {
+    const target = getUserFromMention(args[0]);
+    if (!target) return message.reply('Bitte gib einen gültigen User an!');
+    try {
+      await target.voice.setChannel(null);
+      await target.timeout(60 * 60 * 1000, 'Voice-Ban'); // 1 Stunde Timeout
+      message.reply(`🔇 ${target.user.tag} wurde für den Sprachkanal gesperrt.`);
+    } catch (err) {
+      message.reply('Fehler beim Voice-Ban!');
+    }
+  }
+
+  // !voice-unban @user
+  if (cmd === '!voice-unban') {
+    const target = getUserFromMention(args[0]);
+    if (!target) return message.reply('Bitte gib einen gültigen User an!');
+    try {
+      await target.timeout(null, 'Voice-Unban');
+      message.reply(`🔊 ${target.user.tag} wurde für den Sprachkanal entsperrt.`);
+    } catch (err) {
+      message.reply('Fehler beim Voice-Unban!');
+    }
+  }
+
+  // !voice-kick @user
+  if (cmd === '!voice-kick') {
+    const target = getUserFromMention(args[0]);
+    if (!target) return message.reply('Bitte gib einen gültigen User an!');
+    try {
+      await target.voice.setChannel(null);
+      message.reply(`🚪 ${target.user.tag} wurde aus dem Sprachkanal geworfen.`);
+    } catch (err) {
+      message.reply('Fehler beim Voice-Kick!');
+    }
+  }
+
+  // !voice-rename [neuer Name]
+  if (cmd === '!voice-rename') {
+    const newName = args.join(' ');
+    const member = message.guild.members.cache.get(message.author.id);
+    if (!member.voice.channel) return message.reply('Du bist in keinem Sprachkanal!');
+    try {
+      await member.voice.channel.setName(newName);
+      message.reply(`✏️ Channel-Name geändert zu: ${newName}`);
+    } catch (err) {
+      message.reply('Fehler beim Channel-Umbenennen!');
+    }
+  }
+
+  // !voice-transfer @user
+  if (cmd === '!voice-transfer') {
+    const target = getUserFromMention(args[0]);
+    const member = message.guild.members.cache.get(message.author.id);
+    if (!member.voice.channel) return message.reply('Du bist in keinem Sprachkanal!');
+    if (!target) return message.reply('Bitte gib einen gültigen User an!');
+    try {
+      await member.voice.channel.permissionOverwrites.edit(target.id, {
+        ManageChannels: true,
+      });
+      message.reply(`👑 Channel-Besitz übertragen an ${target.user.tag}`);
+    } catch (err) {
+      message.reply('Fehler beim Übertragen des Channel-Besitzes!');
+    }
   }
 });
 // ...existing code...
