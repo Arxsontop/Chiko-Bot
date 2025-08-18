@@ -627,6 +627,45 @@ client.on('guildMemberAdd', async member => {
 // ...existing code...
 
 // Voice-Channel-Join-Event
+// Join to Create Voice-Channel System
+const JOIN_TO_CREATE_ID = '1403810620914143334'; // Ersetze mit deiner Channel-ID
+const CATEGORY_ID = '1402040728095424592'; // Optional: Kategorie für die neuen Channels
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  // Prüfe, ob User den Join-to-Create Channel betritt
+  if (newState.channelId === JOIN_TO_CREATE_ID && oldState.channelId !== JOIN_TO_CREATE_ID) {
+    const guild = newState.guild;
+    const member = newState.member;
+    // Erstelle neuen Channel
+    const channelName = `🔊 ${member.user.username}`;
+    const newChannel = await guild.channels.create({
+      name: channelName,
+      type: 2, // Voice
+      parent: CATEGORY_ID || undefined,
+      permissionOverwrites: [
+        {
+          id: member.id,
+          allow: ['Connect', 'ManageChannels', 'MuteMembers', 'DeafenMembers'],
+        },
+        {
+          id: guild.roles.everyone.id,
+          allow: ['Connect'],
+        },
+      ],
+    });
+    // Verschiebe User in neuen Channel
+    await member.voice.setChannel(newChannel);
+  }
+  // Lösche leere temporäre Channels
+  if (
+    oldState.channel &&
+    oldState.channel.name.startsWith('🔊') &&
+    oldState.channel.members.size === 0 &&
+    oldState.channel.id !== JOIN_TO_CREATE_ID
+  ) {
+    await oldState.channel.delete().catch(() => {});
+  }
+});
 // ...existing code...
 
 // Melde dich mit deinem Bot-Token an
